@@ -31,7 +31,7 @@ let extra_dir : string list ref =
 let add_extra_dir s = extra_dir := s :: !extra_dir
 
 let extra_pkg : string list ref =
-  Summary.ref ~name:"QC_ocaml_pkg" ["zarith"]
+  Summary.ref ~name:"QC_ocaml_pkg" ["zarith"; "qc"]
 let add_extra_pkg s = extra_pkg := s :: !extra_pkg
 
 let extract_dir : string option ref =
@@ -149,11 +149,14 @@ let define_and_run c env evd =
   let warnings = CWarnings.get_flags () in
   let mute_extraction = warnings ^ (if warnings = "" then "" else ",") ^ "-extraction-opaque-accessed" in
   CWarnings.set_flags mute_extraction;
+  let start = Unix.gettimeofday () in
 #if COQ_VERSION >= (8, 20, 0)
   Flags.silently (Extraction_plugin.Extract_env.full_extraction ~opaque_access (Some mlf)) [qualid_of_ident main];
 #else
   Flags.silently (Extraction_plugin.Extract_env.full_extraction (Some mlf)) [qualid_of_ident main];
 #endif
+  let stop = Unix.gettimeofday () in
+  let extract_time = stop -. start in
   CWarnings.set_flags warnings;
   (* Add a main function to get some output *)
   let oc = open_out_gen [Open_append;Open_text] 0o666 mlf in
@@ -206,30 +209,51 @@ let define_and_run c env evd =
   List.iter print_endline ocaml_dir_cps;
   List.iter (fun cmd -> ignore (Sys.command cmd)) ocaml_dir_cps;
 
-  let packages =
+  (* let packages =
     match !extra_pkg with
     | [] -> ""
     | x -> "-pkgs '" ^ (String.concat "," x) ^ "'"
-  in
+  in *)
   let exec_command =
-    match !dune_file with
-    | None -> "cd " ^ dir ^ " && ocamlbuild -use-ocamlfind " ^ packages ^ " -lib unix -cflags \"-w -3\" " ^ Filename.basename execn ^ " -quiet > build.log 2> build.err"
-    | Some s ->
-       (* Modify the dune file to add the executable name and put it in the output dir *) 
-       let awk_cmd = Printf.sprintf "awk -v n=2 -v s=\"   (name %s)\" 'NR == n {print s} {print}' %s > %s" (Filename.chop_extension (Filename.basename mlf)) s (dir ^ "/" ^ s) in
-       (*       let sed_cmd = Printf.sprintf "sed '2i   (name %s)' %s > %s" (Filename.chop_extension (Filename.basename mlf)) s (dir ^ "/" ^ s) in *)
-       ignore (Sys.command awk_cmd);
-       (* The command is just dune build *)
-       Printf.sprintf "cd %s && dune build --root=. --display=quiet > build.log 2> build.err" dir
+    let log_file = Unix.openfile (dir ^ "/build.log") [ Unix.O_WRONLY; Unix.O_CREAT ] 0o640 in
+    let err_file = Unix.openfile (dir ^ "/build.err") [ Unix.O_WRONLY; Unix.O_CREAT ] 0o640 in
+    let mli_thing = [|
+        "ocamlopt"; "-c"; mlif
+      |] in 
+    let command = match !dune_file with
+    | None -> [|
+        "ocamlfind"; "ocamlopt"; "-I"; dir; "-O3"; "-linkpkg"; "-package"; "unix"; "-package"; "zarith"; 
+        "-package"; "qc";  mlf; "-o"; execn
+      |]
+    | Some s -> 
+      (* Modify the dune file to add the executable name and put it in the output dir *) 
+      let awk_cmd = Printf.sprintf "awk -v n=2 -v s=\"   (name %s)\" 'NR == n {print s} {print}' %s > %s" (Filename.chop_extension (Filename.basename mlf)) s (dir ^ "/" ^ s) in
+      (*       let sed_cmd = Printf.sprintf "sed '2i   (name %s)' %s > %s" (Filename.chop_extension (Filename.basename mlf)) s (dir ^ "/" ^ s) in *)
+      ignore (Sys.command awk_cmd);
+      [| "dune"; "build"; "--root=" ^ dir; "--display=quiet" |]
+    in
+    let start = Unix.gettimeofday () in
+    (* TODO: Clean this up *)
+    let mli_pid = Unix.create_process mli_thing.(0) mli_thing Unix.stdin log_file err_file in
+    let _ = Unix.waitpid [] mli_pid in
+    let child_pid = Unix.create_process command.(0) command Unix.stdin log_file err_file in
+    let got_pid, exit_status = Unix.waitpid [] child_pid in
+    let stop = Unix.gettimeofday () in
+    Unix.close log_file;
+    Unix.close err_file;
+    let build_time = stop -. start in
+    exit_status, build_time
   in
   (* Overwrite execn in case of dune *)
   let execn =
-    let (</>) = Filename.concat in
+    (* let (</>) = Filename.concat in *)
     match !dune_file with
-    | None -> Filename.dirname execn </> "_build" </> Filename.basename execn
+    | None -> execn (* Filename.dirname execn </> "a.out" (*</> Filename.basename execn*)*)
     | Some _ -> dir ^ "/_build/default/" ^ (Filename.chop_extension (Filename.basename execn)) ^ ".exe" in
 
-  if Sys.command exec_command <> 0 then 
+  (* print_string exec_command; *)
+  let exit_status, build_time = exec_command in
+  if exit_status <> Unix.WEXITED 0 then 
     let build_log = read_file (dir ^ "/build.log") in
     let build_err = read_file (dir ^ "/build.err") in
     let msg = str "Could not compile test program: " ++ str mlf ++ fnl () in
@@ -276,8 +300,8 @@ let define_and_run c env evd =
       try process_otl_aux ()
       with End_of_file ->
              let stop = Unix.gettimeofday () in
-             let timeElapsed = stop -. start in
-             Feedback.msg_notice (Pp.str (Printf.sprintf "Time Elapsed: %fs\n" timeElapsed));
+             let run_time = stop -. start in
+             Feedback.msg_notice (Pp.str (Printf.sprintf "{\"timing\":{\"qc:extract\":\"%fs\",\"qc:build\":\"%fs\",\"qc:run\":\"%fs\"}}" extract_time build_time run_time));
             (* try process_err_aux ()
             with End_of_file ->  *)
               let err_msg = read_all p_err in

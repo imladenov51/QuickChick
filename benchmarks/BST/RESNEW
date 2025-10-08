@@ -1,0 +1,9 @@
+QuickChecking insert_bst
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101624_6b09d6 && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChick4b26d7.native -quiet > build.log 2> build.err+++ Passed 100000 tests (0 discards)
+{"timing":{"qc:build":"0.457976s","qc:run":"1.554298s"}}
+QuickChecking insert_bst_derived_checker
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101626_fe54d5 && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChick801653.native -quiet > build.log 2> build.err+++ Passed 100000 tests (0 discards)
+{"timing":{"qc:build":"0.487184s","qc:run":"1.586768s"}}
+QuickChecking insert_bst_derived_gen
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101628_248b65 && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChickce3f1f.native -quiet > build.log 2> build.err+++ Passed 100000 tests (0 discards)
+{"timing":{"qc:build":"0.453694s","qc:run":"1.964001s"}}

@@ -1,0 +1,5 @@
+(library
+ (name qc)
+ (public_name qc)
+ (modules_without_implementation eqLtLe orderedType)
+ (libraries zarith))

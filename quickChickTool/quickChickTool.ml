@@ -423,16 +423,15 @@ let compile_and_run where e : unit =
       else line));
 
   let ocamlbuild_cmd =
-    Printf.sprintf "ocamlbuild -use-ocamlfind -pkg zarith -cflag -rectypes %s %s.native"
-      !ocamlbuild_args
-      (Filename.chop_suffix temporary_file ".v") in
+    Printf.sprintf "ocamlc -I $(opam var lib)/lib/zarith -I $(opam var lib)/lib/qc unix.cmxa zarith.cmxa qc.cmxa %s.ml -o %s.bin"
+      (Filename.chop_suffix temporary_file ".v")(Filename.chop_suffix temporary_file ".v") in
   run_and_show_output_on_failure
-    ocamlbuild_cmd "Ocamlbuild failure";
+    ocamlbuild_cmd "ocamlc failure";
 
   reset_test_results();
 
   let run_command =
-    Printf.sprintf "./%s.native" (Filename.chop_suffix temporary_file ".v") in
+    Printf.sprintf "./%s.bin" (Filename.chop_suffix temporary_file ".v") in
   let chan = Unix.open_process_in run_command in
   let found_result = ref false in
   let rec process_otl_aux () =

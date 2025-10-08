@@ -1,0 +1,491 @@
+open State
+open Coq_String
+open Show
+open Checker
+open Lists
+open RoseTrees
+open Main
+open RandomQC
+open Generators
+
+module Test = struct
+  type args = {
+    replay : (RandomQC.randomSeed * int) option;
+    maxSuccess : int;
+    maxDiscard : int;
+    maxShrinks : int;
+    maxSize : int;
+    chatty : bool;
+    analysis : bool;
+  }
+
+  let mk_args (a, b, c, d, e, f, g) =
+    {
+      replay = a;
+      maxSuccess = b;
+      maxDiscard = c;
+      maxShrinks = d;
+      maxSize = e;
+      chatty = f;
+      analysis = g;
+    }
+
+  type result0 =
+    | Success of int * int * (char list * int) list * char list
+    | GaveUp of int * (char list * int) list * char list
+    | Failure of
+        int
+        * int
+        * int
+        * RandomQC.randomSeed
+        * int
+        * char list
+        * (char list * int) list
+        * char list
+    | NoExpectedFailure of int * (char list * int) list * char list
+
+  let defNumTests = 10000
+  let defNumDiscards = 2 * defNumTests
+  let defNumShrinks = 1000
+  let defSize = 7
+  let doAnalysis = false
+
+  let stdArgs =
+    {
+      replay = None;
+      maxSuccess = defNumTests;
+      maxDiscard = defNumDiscards;
+      maxShrinks = defNumShrinks;
+      maxSize = defSize;
+      chatty = true;
+      analysis = doAnalysis;
+    }
+
+  let roundTo n0 m = Nat.div n0 m * m
+
+  let computeSize'' maxSize_ maxSuccess_ n0 d =
+    if
+      (roundTo n0 maxSize_ + maxSize_ <= maxSuccess_ || maxSuccess_ <= n0)
+      || Nat.modulo maxSuccess_ maxSize_ = 0
+    then Stdlib.min (Nat.modulo n0 maxSize_ + Nat.div d 10) maxSize_
+    else
+      Stdlib.min
+        (Nat.div
+           (Nat.modulo n0 maxSize_ * maxSize_)
+           (Nat.modulo maxSuccess_ maxSize_ + Nat.div d 10))
+        maxSize_
+
+  let computeSize' a n0 d = computeSize'' a.maxSize a.maxSuccess n0 d
+  let at0 f0 s n0 d = if n0 = 0 && d = 0 then s else f0 n0 d
+
+  let rec insertBy compare1 x l =
+    match l with
+    | [] -> x :: []
+    | h :: t0 -> if compare1 x h then x :: l else h :: insertBy compare1 x t0
+
+  let rec insSortBy compare1 = function
+    | [] -> []
+    | h :: t0 -> insertBy compare1 h (insSortBy compare1 t0)
+
+  let summary (st : State.state) =
+    let res = Coq_Map.fold (fun key elem acc -> (key, elem) :: acc) st.labels [] in
+    insSortBy (fun x y -> snd y <= snd x) res
+
+  let doneTesting (st : State.state) =
+    if st.expectedFailure then
+      Success
+        ( st.numSuccessTests + 1,
+          st.numDiscardedTests,
+          summary st,
+          if st.stDoAnalysis then
+            Coq_String.append
+              [
+                '"'; 'r'; 'e'; 's'; 'u'; 'l'; 't'; '"'; ':'; ' '; '"'; 's'; 'u'; 'c'; 'c';
+                'e'; 's'; 's'; '"'; ','; ' '; '"'; 't'; 'e'; 's'; 't'; 's'; '"'; ':'; ' ';
+              ]
+              (Coq_String.append
+                 (Show.show_nat st.numSuccessTests)
+                 (Coq_String.append
+                    [
+                      ','; ' '; '"'; 'd'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 's'; '"'; ':'; ' ';
+                    ]
+                    (Show.show_nat st.numDiscardedTests)))
+          else
+            Coq_String.append
+              [ '+'; '+'; '+'; ' '; 'P'; 'a'; 's'; 's'; 'e'; 'd'; ' ' ]
+              (Coq_String.append
+                 (Show.show_nat st.numSuccessTests)
+                 (Coq_String.append
+                    [ ' '; 't'; 'e'; 's'; 't'; 's'; ' '; '(' ]
+                    (Coq_String.append
+                       (Show.show_nat st.numDiscardedTests)
+                       (Coq_String.append
+                          [ ' '; 'd'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 's'; ')' ]
+                          Show.newline)))) )
+    else
+      NoExpectedFailure
+        ( st.numSuccessTests,
+          summary st,
+          if st.stDoAnalysis then
+            Coq_String.append
+              [
+                '"'; 'r'; 'e'; 's'; 'u'; 'l'; 't'; '"'; ':'; ' '; '"'; 'e'; 'x'; 'p'; 'e';
+                'c'; 't'; 'e'; 'd'; '_'; 'f'; 'a'; 'i'; 'l'; 'u'; 'r'; 'e'; '"'; ','; ' ';
+                '"'; 't'; 'e'; 's'; 't'; 's'; '"'; ':'; ' ';
+              ]
+              (Show.show_nat st.numSuccessTests)
+          else
+            Coq_String.append
+              [
+                '*'; '*'; '*'; ' '; 'F'; 'a'; 'i'; 'l'; 'e'; 'd'; '!'; ' '; 'P'; 'a'; 's';
+                's'; 'e'; 'd'; ' ';
+              ]
+              (Coq_String.append
+                 (Show.show_nat st.numSuccessTests)
+                 (Coq_String.append
+                    [
+                      ' '; 't'; 'e'; 's'; 't'; 's'; ' '; '('; 'e'; 'x'; 'p'; 'e'; 'c';
+                      't'; 'e'; 'd'; ' '; 'F'; 'a'; 'i'; 'l'; 'u'; 'r'; 'e'; ')';
+                    ]
+                    Show.newline)) )
+
+  let giveUp st =
+    GaveUp
+      ( st.numSuccessTests,
+        summary st,
+        if st.stDoAnalysis then
+          append
+            [
+              '"'; 'r'; 'e'; 's'; 'u'; 'l'; 't'; '"'; ':'; ' '; '"'; 'g'; 'a'; 'v'; 'e';
+              '_'; 'u'; 'p'; '"'; ','; ' '; '"'; 't'; 'e'; 's'; 't'; 's'; '"'; ':';
+            ]
+            (append (show_nat st.numSuccessTests)
+               (append
+                  [ ','; ' '; '"'; 'd'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 's'; '"'; ':'; ' ' ]
+                  (show_nat st.numDiscardedTests)))
+        else
+          append
+            [
+              '*'; '*'; '*'; ' '; 'G'; 'a'; 'v'; 'e'; ' '; 'u'; 'p'; '!'; ' '; 'P'; 'a';
+              's'; 's'; 'e'; 'd'; ' '; 'o'; 'n'; 'l'; 'y'; ' ';
+            ]
+            (append (show_nat st.numSuccessTests)
+               (append
+                  [ ' '; 't'; 'e'; 's'; 't'; 's' ]
+                  (append newline
+                     (append
+                        [ 'D'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 'e'; 'd'; ':'; ' ' ]
+                        (append (show_nat st.numDiscardedTests) newline))))) )
+
+  let callbackPostTest st res =
+    let {
+      ok = o;
+      expect = e;
+      reason = r;
+      interrupted = i;
+      stamp = s;
+      callbacks = c;
+      result_tag = t0;
+    } =
+      res
+    in
+    fold_left
+      (fun acc callback0 ->
+        match callback0 with
+        | PostTest (_, call) -> call st (MkSmallResult (o, e, r, i, s, t0)) + acc
+        | PostFinalFailure (_, _) -> acc)
+      c 0
+
+  let callbackPostFinalFailure st res =
+    let {
+      ok = o;
+      expect = e;
+      reason = r;
+      interrupted = i;
+      stamp = s;
+      callbacks = c;
+      result_tag = t0;
+    } =
+      res
+    in
+    fold_left
+      (fun acc callback0 ->
+        match callback0 with
+        | PostTest (_, _) -> acc
+        | PostFinalFailure (_, call) -> call st (MkSmallResult (o, e, r, i, s, t0)) + acc)
+      c 0
+
+  let rec localMin st = function
+    | MkRose (res, ts) ->
+        let rec localMin' st0 = function
+          | [] ->
+              let zero = callbackPostFinalFailure st0 res in
+              (st0.numSuccessShrinks + zero, res)
+          | r' :: ts' -> (
+              let (MkRose (res', _)) = r' in
+              let zero = callbackPostTest st0 res in
+              match res'.ok with
+              | Some x ->
+                  let consistent_tags =
+                    match res.result_tag with
+                    | Some t1 -> (
+                        match res'.result_tag with
+                        | Some t2 -> if string_dec t1 t2 then true else false
+                        | None -> false)
+                    | None -> (
+                        match res'.result_tag with Some _ -> false | None -> true)
+                  in
+                  if negb x && consistent_tags then
+                    localMin
+                      (updSuccessShrinks st0 (fun x0 -> x0 + Stdlib.Int.succ 0 + zero))
+                      r'
+                  else
+                    localMin' (updTryShrinks st0 (fun x0 -> x0 + Stdlib.Int.succ 0)) ts'
+              | None -> localMin' (updTryShrinks st0 (fun x -> x + Stdlib.Int.succ 0)) ts'
+              )
+        in
+        localMin' st (Lazy.force ts)
+
+  let rec runATest st f0 maxSteps =
+    (fun fO fS n -> if n = 0 then fO () else fS (n - 1))
+      (fun _ -> giveUp st)
+      (fun maxSteps' ->
+        let size = st.computeSize st.numSuccessTests st.numDiscardedTests in
+        let rnd1, rnd2 = randomSplit st.randomSeed0 in
+        let test0 =
+         fun st0 ->
+          if st0.numSuccessTests >= st0.maxSuccessTests then doneTesting st0
+          else if st0.numDiscardedTests >= st0.maxDiscardedTests then giveUp st0
+          else runATest st0 f0 maxSteps'
+        in
+        let {
+          maxSuccessTests = mst;
+          maxDiscardedTests = mdt;
+          maxShrinkNo = ms;
+          computeSize = cs;
+          numSuccessTests = nst;
+          numDiscardedTests = ndt;
+          labels = ls;
+          expectedFailure = _;
+          randomSeed0 = r;
+          numSuccessShrinks = nss;
+          numTryShrinks = nts;
+          stDoAnalysis = ana;
+        } =
+          st
+        in
+        let (MkRose (res, ts)) = f0 size rnd1 in
+        let res_cb = callbackPostTest st res in
+        let {
+          ok = ok0;
+          expect = e;
+          reason = reas;
+          interrupted = _;
+          stamp = s;
+          callbacks = _;
+          result_tag = t0;
+        } =
+          res
+        in
+        match ok0 with
+        | Some x ->
+            if x then
+              let ls' =
+                match s with
+                | [] -> ls
+                | _ :: _ -> (
+                    let s_to_add =
+                      ShowFunctions.string_concat
+                        (ShowFunctions.intersperse [ ' '; ','; ' ' ] s)
+                    in
+                    match Coq_Map.find s_to_add ls with
+                    | Some k -> Coq_Map.add s_to_add (k + Stdlib.Int.succ 0) ls
+                    | None -> Coq_Map.add s_to_add (res_cb + Stdlib.Int.succ 0) ls)
+              in
+              test0
+                {
+                  maxSuccessTests = mst;
+                  maxDiscardedTests = mdt;
+                  maxShrinkNo = ms;
+                  computeSize = cs;
+                  numSuccessTests = nst + Stdlib.Int.succ 0;
+                  numDiscardedTests = ndt;
+                  labels = ls';
+                  expectedFailure = e;
+                  randomSeed0 = rnd2;
+                  numSuccessShrinks = nss;
+                  numTryShrinks = nts;
+                  stDoAnalysis = ana;
+                }
+            else
+              let tag_text =
+                match t0 with
+                | Some s0 -> append [ 'T'; 'a'; 'g'; ':'; ' ' ] (append s0 nl)
+                | None -> []
+              in
+              let pre =
+                if ana then
+                  if res.expect then
+                    [
+                      '"'; 'r'; 'e'; 's'; 'u'; 'l'; 't'; '"'; ':'; ' '; '"'; 'f'; 'a';
+                      'i'; 'l'; 'e'; 'd'; '"'; ','; ' ';
+                    ]
+                  else
+                    [
+                      '"'; 'r'; 'e'; 's'; 'u'; 'l'; 't'; '"'; ':'; ' '; '"'; 'e'; 'x';
+                      'p'; 'e'; 'c'; 't'; 'e'; 'd'; '_'; 'f'; 'a'; 'i'; 'l'; 'u'; 'r';
+                      'e'; '"'; ' ';
+                    ]
+                else if res.expect then
+                  [ '*'; '*'; '*'; ' '; 'F'; 'a'; 'i'; 'l'; 'e'; 'd'; ' ' ]
+                else
+                  [
+                    '+'; '+'; '+'; ' '; 'F'; 'a'; 'i'; 'l'; 'e'; 'd'; ' '; '('; 'a'; 's';
+                    ' '; 'e'; 'x'; 'p'; 'e'; 'c'; 't'; 'e'; 'd'; ')'; ' ';
+                  ]
+              in
+              let numShrinks, _ = localMin st (MkRose (res, ts)) in
+              let suf =
+                if ana then
+                  append
+                    [ '"'; 't'; 'e'; 's'; 't'; 's'; '"'; ':'; ' ' ]
+                    (append
+                       (show_nat (Stdlib.Int.succ nst))
+                       (append
+                          [
+                            ','; ' '; '"'; 's'; 'h'; 'r'; 'i'; 'n'; 'k'; 's'; '"'; ':';
+                            ' ';
+                          ]
+                          (append (show_nat numShrinks)
+                             (append
+                                [
+                                  ','; ' '; '"'; 'd'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 's';
+                                  '"'; ':'; ' ';
+                                ]
+                                (show_nat ndt)))))
+                else
+                  append
+                    [ 'a'; 'f'; 't'; 'e'; 'r'; ' ' ]
+                    (append
+                       (show_nat (Stdlib.Int.succ nst))
+                       (append
+                          [ ' '; 't'; 'e'; 's'; 't'; 's'; ' '; 'a'; 'n'; 'd'; ' ' ]
+                          (append (show_nat numShrinks)
+                             (append
+                                [ ' '; 's'; 'h'; 'r'; 'i'; 'n'; 'k'; 's'; '.'; ' '; '(' ]
+                                (append (show_nat ndt)
+                                   [ ' '; 'd'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 's'; ')' ])))))
+              in
+              if negb res.expect then
+                Success
+                  ( nst + Stdlib.Int.succ 0,
+                    ndt,
+                    summary st,
+                    append tag_text (append pre suf) )
+              else
+                Failure
+                  ( nst + Stdlib.Int.succ 0,
+                    numShrinks,
+                    ndt,
+                    r,
+                    size,
+                    append tag_text (append pre suf),
+                    summary st,
+                    reas )
+        | None ->
+            let ls' =
+              match s with
+              | [] -> ls
+              | _ :: _ -> (
+                  let s_to_add =
+                    append
+                      [ '('; 'D'; 'i'; 's'; 'c'; 'a'; 'r'; 'd'; 'e'; 'd'; ')'; ' ' ]
+                      (ShowFunctions.string_concat
+                         (ShowFunctions.intersperse [ ' '; ','; ' ' ] s))
+                  in
+                  match Coq_Map.find s_to_add ls with
+                  | Some k -> Coq_Map.add s_to_add (k + Stdlib.Int.succ 0) ls
+                  | None -> Coq_Map.add s_to_add (res_cb + Stdlib.Int.succ 0) ls)
+            in
+            test0
+              {
+                maxSuccessTests = mst;
+                maxDiscardedTests = mdt;
+                maxShrinkNo = ms;
+                computeSize = cs;
+                numSuccessTests = nst;
+                numDiscardedTests = Stdlib.Int.succ ndt;
+                labels = ls';
+                expectedFailure = e;
+                randomSeed0 = rnd2;
+                numSuccessShrinks = nss;
+                numTryShrinks = nts;
+                stDoAnalysis = ana;
+              })
+      maxSteps
+
+  let test st f0 =
+    if st.numSuccessTests >= st.maxSuccessTests then doneTesting st
+    else if st.numDiscardedTests >= st.maxDiscardedTests then giveUp st
+    else
+      let maxSteps = st.maxSuccessTests + st.maxDiscardedTests in
+      runATest st f0 maxSteps
+
+  let quickCheckWith x a p =
+    match a.replay with
+    | Some p0 ->
+        let rnd, s = p0 in
+        let computeFun = at0 (computeSize' a) s in
+        test
+          {
+            maxSuccessTests = a.maxSuccess;
+            maxDiscardedTests = a.maxDiscard;
+            maxShrinkNo = a.maxShrinks;
+            computeSize = computeFun;
+            numSuccessTests = 0;
+            numDiscardedTests = 0;
+            labels = Coq_Map.empty;
+            expectedFailure = false;
+            randomSeed0 = rnd;
+            numSuccessShrinks = 0;
+            numTryShrinks = 0;
+            stDoAnalysis = a.analysis;
+          }
+          (run (x p))
+    | None ->
+        let computeFun = computeSize' a in
+        test
+          {
+            maxSuccessTests = a.maxSuccess;
+            maxDiscardedTests = a.maxDiscard;
+            maxShrinkNo = a.maxShrinks;
+            computeSize = computeFun;
+            numSuccessTests = 0;
+            numDiscardedTests = 0;
+            labels = Coq_Map.empty;
+            expectedFailure = false;
+            randomSeed0 = newRandomSeed;
+            numSuccessShrinks = 0;
+            numTryShrinks = 0;
+            stDoAnalysis = a.analysis;
+          }
+          (run (x p))
+
+  let rec showCollectStatistics = function
+    | [] -> []
+    | p :: l' ->
+        let s, n0 = p in
+        append (show_nat n0)
+          (append [ ' '; ':'; ' ' ]
+             (append s (append newline (showCollectStatistics l'))))
+
+  let showResult = function
+    | Success (_, _, l, s) -> append (showCollectStatistics l) s
+    | GaveUp (_, l, s) -> append (showCollectStatistics l) s
+    | Failure (_, _, _, _, _, s, l, _) -> append (showCollectStatistics l) s
+    | NoExpectedFailure (_, l, s) -> append (showCollectStatistics l) s
+
+  let quickCheck x p = quickCheckWith x stdArgs p
+end
+
+include Test

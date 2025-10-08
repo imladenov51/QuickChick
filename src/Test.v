@@ -37,6 +37,10 @@ Definition updMaxSuccess (a : Args) (x : nat) : Args :=
   let '(MkArgs r msc md msh msz c an) := a in 
   MkArgs r x md msh msz c an.
 
+Definition updMaxDiscard (a : Args) (x : nat) : Args := 
+  let '(MkArgs r msc md msh msz c an) := a in 
+  MkArgs r msc x msh msz c an.
+
 Definition updAnalysis (a : Args) (b : bool) : Args := 
   let '(MkArgs r msc md msh msz c an) := a in 
   MkArgs r msc md msh msz c b.
@@ -342,6 +346,51 @@ Definition quickCheckWith {prop : Type} {_ : Checkable prop}
                 0               (* numTryShrinks     *)
                 (analysis a)  (* analysisFlag      *)
        ) (run (checker p)).
+
+Parameter OCamlFloat : Type.
+Extract Constant OCamlFloat => "float".
+
+Axiom showOCamlFloat' : OCamlFloat -> string.
+Extract Constant showOCamlFloat' => "(fun f -> Printf.sprintf ""%.9fs"" f |> String.to_seq |> List.of_seq)".
+
+#[global] Instance showOCamlFloat : Show OCamlFloat := {| show := showOCamlFloat' |}.
+
+Inductive TimedResult {A: Type} :=
+| TResult (result: A) (time: OCamlFloat) (start: OCamlFloat) (ending: OCamlFloat).
+
+Axiom withTime : forall {A}, (unit -> A) -> @TimedResult A.
+
+Extract Constant withTime => "
+  (fun f -> 
+    let start = Unix.gettimeofday () in 
+    let res = f () in 
+    let ending = Unix.gettimeofday () in
+    TResult (res, (ending -. start), start, ending))".
+
+Local Open Scope string_scope.
+
+#[global] Instance showTimedResult {A: Type} `{Show A} : Show (@TimedResult A) := {|
+  show result := 
+    let '(TResult result time start ending) := result in
+     """time"": """ ++ show time ++ """, " ++ show result
+|}.
+
+Local Close Scope string_scope.
+
+
+Definition quickSample {A} `{Show A}
+  (a : Args) (g : G A) : list (@TimedResult A) :=
+  let numTests := maxSuccess a in
+  let fix aux n cnt acc rnd : list (@TimedResult A) :=
+    match n with
+    | 0 => @rev (@TimedResult A) acc
+    | S n' =>
+        let size := computeSize' a cnt 0 in 
+        let (rnd1, rnd2) := randomSplit rnd in
+        let x := @withTime A (fun tt => run g size rnd1) in
+        aux n' (S cnt) (cons x acc) rnd2
+    end in
+  aux (maxSuccess a) 0 nil newRandomSeed.
 
 Fixpoint showCollectStatistics (l : list (string * nat)) : string :=
   match l with

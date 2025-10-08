@@ -1,0 +1,111 @@
+module State = struct
+  type state = {
+    maxSuccessTests : int;
+    maxDiscardedTests : int;
+    maxShrinkNo : int;
+    computeSize : int -> int -> int;
+    numSuccessTests : int;
+    numDiscardedTests : int;
+    labels : int Coq_Map.t;
+    expectedFailure : bool;
+    randomSeed0 : RandomQC.randomSeed;
+    numSuccessShrinks : int;
+    numTryShrinks : int;
+    stDoAnalysis : bool;
+  }
+
+  let mk_state (a, b, c, d, e, f, g, h, i, j, k, l) =
+    {
+      maxSuccessTests = a;
+      maxDiscardedTests = b;
+      maxShrinkNo = c;
+      computeSize = d;
+      numSuccessTests = e;
+      numDiscardedTests = f;
+      labels = g;
+      expectedFailure = h;
+      randomSeed0 = i;
+      numSuccessShrinks = j;
+      numTryShrinks = k;
+      stDoAnalysis = l;
+    }
+
+  let maxSuccessTests s = s.maxSuccessTests
+  let maxDiscardedTests s = s.maxDiscardedTests
+  let maxShrinkNo s = s.maxShrinkNo
+  let computeSize s = s.computeSize
+  let numSuccessTests s = s.numSuccessTests
+  let numDiscardedTests s = s.numDiscardedTests
+  let labels s = s.labels
+  let expectedFailure s = s.expectedFailure
+  let randomSeed0 s = s.randomSeed0
+  let numSuccessShrinks s = s.numSuccessShrinks
+  let numTryShrinks s = s.numTryShrinks
+  let stDoAnalysis s = s.stDoAnalysis
+
+  let updTryShrinks st f0 =
+    let {
+      maxSuccessTests = mst;
+      maxDiscardedTests = mdt;
+      maxShrinkNo = ms;
+      computeSize = cs;
+      numSuccessTests = nst;
+      numDiscardedTests = ndt;
+      labels = ls;
+      expectedFailure = e;
+      randomSeed0 = r;
+      numSuccessShrinks = nss;
+      numTryShrinks = nts;
+      stDoAnalysis = ana;
+    } =
+      st
+    in
+    {
+      maxSuccessTests = mst;
+      maxDiscardedTests = mdt;
+      maxShrinkNo = ms;
+      computeSize = cs;
+      numSuccessTests = nst;
+      numDiscardedTests = ndt;
+      labels = ls;
+      expectedFailure = e;
+      randomSeed0 = r;
+      numSuccessShrinks = nss;
+      numTryShrinks = f0 nts;
+      stDoAnalysis = ana;
+    }
+
+  let updSuccessShrinks st f0 =
+    let {
+      maxSuccessTests = mst;
+      maxDiscardedTests = mdt;
+      maxShrinkNo = ms;
+      computeSize = cs;
+      numSuccessTests = nst;
+      numDiscardedTests = ndt;
+      labels = ls;
+      expectedFailure = e;
+      randomSeed0 = r;
+      numSuccessShrinks = nss;
+      numTryShrinks = nts;
+      stDoAnalysis = ana;
+    } =
+      st
+    in
+    {
+      maxSuccessTests = mst;
+      maxDiscardedTests = mdt;
+      maxShrinkNo = ms;
+      computeSize = cs;
+      numSuccessTests = nst;
+      numDiscardedTests = ndt;
+      labels = ls;
+      expectedFailure = e;
+      randomSeed0 = r;
+      numSuccessShrinks = f0 nss;
+      numTryShrinks = nts;
+      stDoAnalysis = ana;
+    }
+end
+
+include State

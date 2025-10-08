@@ -1,0 +1,13 @@
+QuickChecking prop_preservation
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101655_516583 && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChickcbc689.native -quiet > build.log 2> build.err+++ Passed 100000 tests (0 discards)
+{"timing":{"qc:build":"0.489115s","qc:run":"2.198659s"}}
+QuickChecking prop_preservation_derived_checker
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101658_10b334 && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChick7789e9.native -quiet > build.log 2> build.err+++ Passed 100000 tests (16143 discards)
+{"timing":{"qc:build":"0.508230s","qc:run":"5.182246s"}}
+QuickChecking prop_preservation_derived_gen
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101704_ed366c && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChick1abd37.native -quiet > build.log 2> build.err+++ Passed 100000 tests (21660 discards)
+{"timing":{"qc:build":"0.477111s","qc:run":"25.463573s"}}
+QuickChecking prop_preservation_naive_gen
+cd /var/folders/79/2gchg8050jd0gv7vh8fpfqvh0000gn/T/QuickChick/101730_f39574 && ocamlbuild -use-ocamlfind -pkgs 'zarith,qc' -lib unix -cflags "-w -3" QuickChick5b3216.native -quiet > build.log 2> build.err*** Gave up! Passed only 32887 tests
+Discarded: 200000
+{"timing":{"qc:build":"0.455896s","qc:run":"23.387923s"}}

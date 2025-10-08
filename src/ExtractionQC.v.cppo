@@ -11,11 +11,18 @@ Require Import ZArith.
 Require Import Coq.Strings.Ascii.
 Require Import Coq.Strings.String.
 From QuickChick Require Import
-  RandomQC RoseTrees Test Show Checker.
+  RandomQC RoseTrees Test Show StringOT Checker State Producer Generators.
 
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlString.
-Require Import ExtrOcamlNatInt.
+From Corelib Require Import 
+  PosDef ListDef Decimal.
+From Stdlib Require Import 
+  BinPosDef List OrderedType ZArith Logic.
+From ExtLib Require Import
+  Functor Monad.
+
+Require Import ExtrOcamlBasic.  
+Require Import ExtrOcamlString. 
+Require Import ExtrOcamlNatInt. 
 Require Import ExtrOcamlZBigInt.
 
 Extraction Blacklist String List Nat.
@@ -36,61 +43,33 @@ Extract Inductive Decimal.int => "((Obj.t -> Obj.t) -> (Obj.t -> Obj.t) -> Obj.t
     "(fun y _ neg -> neg (Obj.magic y))"
   ] "(fun pos neg i -> Obj.magic i pos neg)".
 
-Extract Constant show_nat =>
-  "(fun i ->
-  let s = string_of_int i in
-  let rec copy acc i =
-    if i < 0 then acc else copy (s.[i] :: acc) (i-1)
-  in copy [] (String.length s - 1))".
-Extract Constant show_bool =>
-  "(fun i ->
-  let s = string_of_bool i in
-  let rec copy acc i =
-    if i < 0 then acc else copy (s.[i] :: acc) (i-1)
-  in copy [] (String.length s - 1))".
+(* TODO: Move these around. *)
+Extract Inlined Constant Logic.EqdepFacts.internal_eq_rew_r_dep => "Qc__Main.internal_eq_rew_r_dep".
 
-Extract Constant show_Z =>
-  "(fun i ->
-  let s = Big_int_Z.string_of_big_int i in
-  let rec copy acc i =
-    if i < 0 then acc else copy (s.[i] :: acc) (i-1)
-  in copy [] (String.length s - 1))".
-Extract Constant show_N =>
-  "(fun i ->
-  let s = Big_int_Z.string_of_big_int i in
-  let rec copy acc i =
-    if i < 0 then acc else copy (s.[i] :: acc) (i-1)
-  in copy [] (String.length s - 1))".
+Extract Inlined Constant negb => "Qc__Main.negb".
+Extract Inlined Constant fst => "Qc__Main.fst".
+Extract Inlined Constant snd => "Qc__Main.snd".
+Extract Inlined Constant app => "Qc__Main.app".
 
-Extract Constant RandomSeed   => "Random.State.t".
-Extract Constant randomNext   => "(fun r -> Random.State.bits r, r)".
+Extract Inlined Constant RandomQC.RandomSeed => "Qc__RandomQC.randomSeed".
+Extract Inlined Constant RandomQC.randomNext   => "Qc__RandomQC.randomNext".
 (* Extract Constant rndGenRange => "SR.genRange".*)
-Extract Constant randomSplit  => "(fun x -> (x,x))".
-Extract Constant mkRandomSeed => "(fun x -> Random.init x; Random.get_state())".
-Extract Constant randomRNat  =>
+Extract Inlined Constant RandomQC.randomSplit  => "Qc__RandomQC.randomSplit".
+Extract Constant RandomQC.randomRNat  =>
 #if OCAML_VERSION >= (4, 13, 0)
-  "(fun (x,y) r -> if y < x then failwith ""choose called with unordered arguments"" else  (x + (Random.State.full_int r (y - x + 1)), r))".
+  "Qc__RandomQC.randomRNat".
 #else
   "(fun (x,y) r -> if y < x then failwith ""choose called with unordered arguments"" else  (x + (Random.State.int r (y - x + 1)), r))".
 #endif
-Extract Constant randomRBool => "(fun _ r -> Random.State.bool r, r)".
-Extract Constant randomRInt  =>
-  "(fun (x,y) r ->
-   if Big_int_Z.lt_big_int y x
-   then failwith ""choose called with unordered arguments""
-   else
-    let range_Z = Big_int_Z.succ_big_int (Big_int_Z.sub_big_int y x) in
-    let range_int = Big_int_Z.int_of_big_int range_Z in
-    (Big_int_Z.add_big_int x (Big_int_Z.big_int_of_int (Random.State.int r range_int)), r))".
-Extract Constant randomRN =>
-  "(fun (x,y) r ->
-   if Big_int_Z.lt_big_int y x
-   then failwith ""choose called with unordered arguments""
-   else
-    let range_Z = Big_int_Z.succ_big_int (Big_int_Z.sub_big_int y x) in
-    let range_int = Big_int_Z.int_of_big_int range_Z in
-    (Big_int_Z.add_big_int x (Big_int_Z.big_int_of_int (Random.State.int r range_int)), r))".
-Extract Constant newRandomSeed => "(Random.State.make_self_init ())".
+Extract Inlined Constant RandomQC.randomRBool => "Qc__RandomQC.randomRBool".
+Extract Inlined Constant RandomQC.randomRInt  => "Qc__RandomQC.randomRInt".
+Extract Inlined Constant RandomQC.randomRN => "Qc__RandomQC.randomRN".
+Extract Inlined Constant RandomQC.newRandomSeed => "Qc__RandomQC.newRandomSeed".
+Extract Inlined Constant RandomQC.enumRNat => "Qc__RandomQC.enumRNat".
+Extract Inductive RandomQC.ChoosableFromInterval => "Qc__RandomQC.choosableFromInterval" [ "Qc__RandomQC.Build_ChoosableFromInterval" ]. 
+Extract Inlined Constant RandomQC.randomR => "Qc__RandomQC.randomR".
+Extract Inlined Constant RandomQC.enumR => "Qc__RandomQC.enumR".
+Extract Inlined Constant RandomQC.ChooseNat => "Qc__RandomQC.chooseNat".
 
 Extract Inductive Lazy => "Lazy.t" [lazy].
 Extract Inlined Constant force => "Lazy.force".
@@ -99,41 +78,280 @@ Extract Inlined Constant force => "Lazy.force".
 (* Extract Constant Test.strEq   => "(=)". *)
 Extract Inlined Constant Test.gte => "(>=)".
 Extract Inlined Constant le_gt_dec => "(<=)".
-Extract Constant trace =>
-  "(fun l -> print_string (
-   let s = Bytes.create (List.length l) in
-   let rec copy i = function
-    | [] -> s
-    | c :: l -> Bytes.set s i c; copy (i+1) l
-   in Bytes.to_string (copy 0 l)); flush stdout; fun y -> y)".
+Extract Constant trace => "Qc__Show.trace".
 
 From mathcomp Require Import ssreflect ssrfun ssrbool ssrnat div eqtype.
 Set SsrOldRewriteGoalsOrder.  (* change Set to Unset when porting the file, then remove the line when requiring MathComp >= 2.6 *)
-Extract Constant divn => "(fun m -> function 0 -> 0 | d -> m / d)".
-Extract Constant modn => "(fun m -> function 0 -> m | d -> m mod d)".
+Extract Constant divn => "Qc__Main.divn".
+Extract Constant modn => "Qc__Main.modn".
 Extract Inlined Constant eqn => "(=)".
 
 Extract Inlined Constant Nat.add => "(+)".
 Extract Inlined Constant Nat.mul => "( * )".
 Extract Inlined Constant Nat.sub => "(-)".
-Extract Constant Nat.log2 => "(let rec log2 x = if x <= 1 then 0 else 1 + log2 (x / 2) in log2)".
 Extract Inlined Constant Nat.eqb => "(=)".
 Extract Inlined Constant Coq.Init.Nat.eqb => "(=)".
-Extract Constant Nat.div => "(fun x -> function 0 -> 0 | y -> x / y)".
-Extract Constant Coq.Init.Nat.div => "(fun x -> function 0 -> 0 | y -> x / y)".
+Extract Constant Coq.Init.Nat.div => "Qc__Main.coq_init_nat_div".
 Extract Inlined Constant Nat.min => "min".
 Extract Inlined Constant Nat.max => "max".
-Extract Constant Nat.modulo => "(fun x -> function 0 -> x | y -> x mod y)".
 Extract Inlined Constant Nat.leb => "(<=)".
 
+Extract Inlined Constant Nat.to_little_uint => "Qc__Nat.to_little_uint".
+Extract Inlined Constant Nat.to_uint => "Qc__Nat.to_uint".
+Extract Inlined Constant Nat.divmod => "Qc__Nat.divmod".
+Extract Inlined Constant Nat.div => "Qc__Nat.div".
+Extract Inlined Constant Nat.modulo => "Qc__Nat.modulo".
+Extract Inlined Constant Nat.log2 => "Qc__Nat.log2".
+
 Axiom print_extracted_coq_string : string -> unit.
-Extract Constant print_extracted_coq_string =>
- "fun l -> print_string (
-   let s = Bytes.create (List.length l) in
-   let rec copy i = function
-    | [] -> s
-    | c :: l -> Bytes.set s i c; copy (i+1) l
-   in Bytes.to_string (copy 0 l))".
+Extract Constant print_extracted_coq_string => "Qc__Show.print_extracted_coq_string".
 
 Axiom withTime : forall {A}, (unit -> A) -> AugmentedTime A.
 Extract Constant withTime => "(fun f -> let start = Unix.gettimeofday () in let res = f () in let ending = Unix.gettimeofday () in { aug_res = res; aug_time = ((Float.to_int ((ending -. start) *. 1000000.0))) } )".
+
+(* Corelib Posdef.v *)
+Extract Inductive positive => "Big_int_Z.big_int"
+ [ "(fun x -> Big_int_Z.succ_big_int (Big_int_Z.mult_int_big_int 2 x))"
+   "Big_int_Z.mult_int_big_int 2" "Big_int_Z.unit_big_int" ]
+ "(fun f2p1 f2p f1 p ->
+  if Big_int_Z.le_big_int p Big_int_Z.unit_big_int then f1 () else
+  let (q,r) = Big_int_Z.quomod_big_int p (Big_int_Z.big_int_of_int 2) in
+  if Big_int_Z.eq_big_int r Big_int_Z.zero_big_int then f2p q else f2p1 q)".
+
+Extract Inductive Z => "Big_int_Z.big_int"
+ [ "Big_int_Z.zero_big_int" "" "Big_int_Z.minus_big_int" ]
+ "(fun fO fp fn z -> let s = Big_int_Z.sign_big_int z in
+  if s = 0 then fO () else if s > 0 then fp z
+  else fn (Big_int_Z.minus_big_int z))".
+
+Extract Inductive N => "Big_int_Z.big_int"
+ [ "Big_int_Z.zero_big_int" "" ]
+ "(fun fO fp n -> if Big_int_Z.sign_big_int n <= 0 then fO () else fp n)".
+
+Extract Inductive comparison => "Qc__Main.comparison" [ "Qc__Main.Eq" "Qc__Main.Lt" "Qc__Main.Gt" ].
+
+Extract Inlined Constant PosDef.Pos.succ => "Qc__Pos.succ".
+Extract Inlined Constant PosDef.Pos.add => "Qc__Pos.add".
+Extract Inlined Constant PosDef.Pos.add_carry => "Qc__Pos.add_carry".
+Extract Inlined Constant PosDef.Pos.pred_double => "Qc__Pos.pred_double".
+Extract Inlined Constant PosDef.Pos.mul => "Qc__Pos.mul".
+Extract Inlined Constant PosDef.Pos.compare_cont => "Qc__Pos.compare_cont".
+Extract Inlined Constant PosDef.Pos.compare => "Qc__Pos.compare".
+Extract Inlined Constant PosDef.Pos.eqb => "Qc__Pos.eqb".
+Extract Inlined Constant PosDef.Pos.iter_op => "Qc__Pos.iter_op".
+Extract Inlined Constant PosDef.Pos.to_nat => "Qc__Pos.to_nat".
+
+(* Handles name collision between Corelib and Stdlib Pos module. *)
+Extract Inlined Constant BinPos.Pos.succ => "Qc__Coq_Pos.succ".
+Extract Inlined Constant BinPos.Pos.add => "Qc__Coq_Pos.add".
+Extract Inlined Constant BinPos.Pos.add_carry => "Qc__Coq_Pos.add_carry".
+Extract Inlined Constant BinPos.Pos.mul => "Qc__Coq_Pos.mul".
+Extract Inlined Constant BinPos.Pos.eq_dec => "Qc__Coq_Pos.eq_dec".
+
+Extract Inlined Constant N.compare => "Qc__N.compare".
+Extract Inlined Constant N.add => "Qc__N.add".
+Extract Inlined Constant N.mul => "Qc__N.mul".
+Extract Inlined Constant N.to_nat => "Qc__N.to_nat".
+
+Extract Inlined Constant Z.double => "Qc__Z.double".
+Extract Inlined Constant Z.succ_double => "Qc__Z.succ_double".
+Extract Inlined Constant Z.pred_double => "Qc__Z.pred_double".
+Extract Inlined Constant Z.pos_sub => "Qc__Z.pos_sub".
+Extract Inlined Constant Z.add => "Qc__Z.add".
+Extract Inlined Constant Z.opp => "Qc__Z.opp".
+Extract Inlined Constant Z.sub => "Qc__Z.sub".
+Extract Inlined Constant Z.mul => "Qc__Z.mul".
+Extract Inlined Constant Z.compare => "Qc__Z.compare".
+Extract Inlined Constant Z.leb => "Qc__Z.leb".
+Extract Inlined Constant Z.ltb => "Qc__Z.ltb".
+Extract Inlined Constant Z.eqb => "Qc__Z.eqb".
+Extract Inlined Constant Z.max => "Qc__Z.max".
+Extract Inlined Constant Z.eq_dec => "Qc__Z.eq_dec".
+
+Extract Inlined Constant Strings.Ascii.N_of_digits => "Qc__Ascii.n_of_digits".
+Extract Inlined Constant Strings.Ascii.N_of_ascii => "Qc__Ascii.n_of_ascii".
+
+Extract Inlined Constant Strings.String.string_dec => "Qc__Coq_String.string_dec".
+Extract Inlined Constant Strings.String.append => "Qc__Coq_String.append".
+
+Extract Inductive LazyList.LazyList => "Qc__LazyList.lazyList" [ "Qc__LazyList.Lnil" "Qc__LazyList.Lcons" ].
+Extract Constant LazyList.lazy_seq => "Qc__LazyList.lazy_seq".
+
+Extract Constant ListDef.map => "Qc__Lists.map".
+
+Extract Inlined Constant List.fold_left => "Qc__Lists.fold_left".
+Extract Inlined Constant List.rev => "Qc__Lists.rev".
+Extract Inlined Constant List.fold_right => "Qc__Lists.fold_right".
+Extract Inlined Constant List.combine => "Qc__Lists.combine".
+
+Extract Inductive OrderedType.Compare => "Qc__Main.compare" [ "Qc__Main.LT" "Qc__Main.EQ" "Qc__Main.GT" ].
+
+Extract Inlined Constant StringOT.t => "Qc__StringOT.t".
+Extract Inductive StringOT.SOrdering => "Qc__StringOT.sOrdering" [ "Qc__StringOT.SLT" "Qc__StringOT.SEQ"  "Qc__StringOT.SGT" ].
+Extract Inlined Constant StringOT.SOrdering_rect => "Qc__StringOT.sOrdering_rect".
+Extract Inlined Constant StringOT.SOrdering_rec => "Qc__StringOT.sOrdering_rec".
+Extract Inlined Constant StringOT.strcmp => "Qc__StringOT.strcmp".
+Extract Inlined Constant StringOT.compare => "Qc__StringOT.compare".
+
+Extract Inlined Constant AsciiOT.t => "Qc__AsciiOT.t".
+Extract Inlined Constant AsciiOT.compare => "Qc__AsciiOT.compare".
+
+Extract Inductive Decimal.uint => "Qc__Decimal.uint" [ "Qc__Decimal.Nil" "Qc__Decimal.D0" "Qc__Decimal.D1" "Qc__Decimal.D2" "Qc__Decimal.D3" "Qc__Decimal.D4" "Qc__Decimal.D5" "Qc__Decimal.D6" "Qc__Decimal.D7" "Qc__Decimal.D8" "Qc__Decimal.D9" ].
+Extract Constant Decimal.revapp => "Qc__Decimal.revapp".
+Extract Constant Decimal.rev => "Qc__Decimal.rev".
+
+Extract Inlined Constant Decimal.Little.succ => "Qc__Little.succ".
+
+Extract Inlined Constant Int.Z_as_Int.t => "Qc__Z_as_Int.t".
+Extract Inlined Constant Int.Z_as_Int._0 => "Qc__Z_as_Int._0".
+Extract Inlined Constant Int.Z_as_Int._1 => "Qc__Z_as_Int._1".
+Extract Inlined Constant Int.Z_as_Int._2 => "Qc__Z_as_Int._2".
+Extract Inlined Constant Int.Z_as_Int._3 => "Qc__Z_as_Int._3".
+Extract Inlined Constant Int.Z_as_Int.add => "Qc__Z_as_Int.add".
+Extract Inlined Constant Int.Z_as_Int.opp => "Qc__Z_as_Int.opp".
+Extract Inlined Constant Int.Z_as_Int.sub => "Qc__Z_as_Int.sub".
+Extract Inlined Constant Int.Z_as_Int.mul => "Qc__Z_as_Int.mul".
+Extract Inlined Constant Int.Z_as_Int.max => "Qc__Z_as_Int.max".
+Extract Inlined Constant Int.Z_as_Int.eqb => "Qc__Z_as_Int.eqb".
+Extract Inlined Constant Int.Z_as_Int.ltb => "Qc__Z_as_Int.ltb".
+Extract Inlined Constant Int.Z_as_Int.leb => "Qc__Z_as_Int.leb".
+Extract Inlined Constant Int.Z_as_Int.eq_dec => "Qc__Z_as_Int.eq_dec".
+Extract Inlined Constant Int.Z_as_Int.gt_le_dec => "Qc__Z_as_Int.gt_le_dec".
+Extract Inlined Constant Int.Z_as_Int.ge_lt_dec => "Qc__Z_as_Int.ge_lt_dec".
+Extract Inlined Constant Int.Z_as_Int.i2z => "Qc__Z_as_Int.i2z".
+
+Extract Inductive State.Map.bst => "Qc__Coq_Map.bst" [ "Qc__Coq_Map.Leaf" "Qc__Coq_Map.Node" ].
+Extract Constant State.Map.t "'elt" => "'elt Qc__Coq_Map.t".
+Extract Inlined Constant State.Map.empty => "Qc__Coq_Map.empty".
+Extract Inlined Constant State.Map.find => "Qc__Coq_Map.find".
+Extract Inlined Constant State.Map.height => "Qc__Coq_Map.height".
+Extract Inlined Constant State.Map.create => "Qc__Coq_Map.create".
+Extract Inlined Constant State.Map.assert_false => "Qc__Coq_Map.assert_false".
+Extract Inlined Constant State.Map.bal => "Qc__Coq_Map.bal".
+Extract Inlined Constant State.Map.fold => "Qc__Coq_Map.fold".
+Extract Inlined Constant State.Map.add => "Qc__Coq_Map.add".
+
+Extract Inductive Show.Show => "Qc__Show.show" [ "(fun x -> x)" ] "(fun cns x -> cns x)".
+Extract Inlined Constant Show.newline => "Qc__Show.newline".
+Extract Inlined Constant Show.nl => "Qc__Show.nl".
+Extract Inlined Constant Show.trace => "Qc__Show.trace".
+Extract Inlined Constant Show.show_nat => "Qc__Show.show_nat".
+Extract Inlined Constant Show.show_bool => "Qc__Show.show_bool".
+Extract Inlined Constant Show.show_Z => "Qc__Show.show_Z".
+Extract Inlined Constant Show.show_N => "Qc__Show.show_N".
+
+Extract Inlined Constant Show.ShowFunctions.prepend => "Qc__ShowFunctions.prepend".
+Extract Inlined Constant Show.ShowFunctions.intersperse => "Qc__ShowFunctions.intersperse".
+Extract Inlined Constant Show.ShowFunctions.string_concat => "Qc__ShowFunctions.string_concat".
+
+Extract Inductive Producer.Producer => "Qc__Producer.producer" [ "Qc__Producer.Build_Producer" ]. 
+Extract Inlined Constant Producer.super => "Qc__Producer.super".
+Extract Inlined Constant Producer.sample => "Qc__Producer.sample".
+Extract Inlined Constant Producer.sized => "Qc__Producer.sized".
+Extract Inlined Constant Producer.resize => "Qc__Producer.resize".
+Extract Inlined Constant Producer.choose => "Qc__Producer.choose".
+Extract Inlined Constant Producer.bindPf => "Qc__Producer.bindPf".
+
+Extract Inductive Functor.Functor => "Qc__Functor.functor0" [ "(fun x -> x)" ] "(fun cns x -> cns x)". 
+Extract Constant Functor.fmap => "Qc__Functor.fmap".
+
+Extract Inductive Monad.Monad => "Qc__Monad.monad" [ "Qc__Monad.Build_Monad" ].
+Extract Inlined Constant Monad.ret => "Qc__Monad.ret".
+Extract Inlined Constant Monad.bind => "Qc__Monad.bind".
+Extract Inlined Constant Monad.liftM => "Qc__Monad.liftM".
+Extract Inlined Constant Monad.Functor_Monad => "Qc__Monad.functor_Monad".
+
+Extract Inductive RoseTrees.Rose => "Qc__RoseTrees.rose" [ "Qc__RoseTrees.MkRose" ].
+Extract Constant RoseTrees.returnRose => "Qc__RoseTrees.returnRose".
+Extract Constant RoseTrees.joinRose => "Qc__RoseTrees.joinRose".
+Extract Constant RoseTrees.fmapRose => "Qc__RoseTrees.fmapRose".
+
+Extract Inductive Generators.GenType => "Qc__Generators.genType" [ "Qc__Generators.MkGen" ].
+Extract Constant Generators.G "'a" => "'a Qc__Generators.g".
+Extract Inlined Constant Generators.run => "Qc__Generators.run".
+Extract Inlined Constant Generators.returnGen => "Qc__Generators.returnGen".
+Extract Inlined Constant Generators.bindGen => "Qc__Generators.bindGen".
+Extract Inlined Constant Generators.MonadGen => "Qc__Generators.monadGen".
+Extract Inlined Constant Generators.createRange => "Qc__Generators.createRange".
+Extract Inlined Constant Generators.rnds => "Qc__Generators.rnds".
+Extract Inlined Constant Generators.sampleGen => "Qc__Generators.sampleGen".
+Extract Inlined Constant Generators.sizedGen => "Qc__Generators.sizedGen".
+Extract Inlined Constant Generators.resizeGen => "Qc__Generators.resizeGen".
+Extract Inlined Constant Generators.chooseGen => "Qc__Generators.chooseGen".
+Extract Inlined Constant Generators.ProducerGen => "Qc__Generators.producerGen".
+Extract Inlined Constant Generators.promote => "Qc__Generators.promote".
+
+Extract Inductive State.State => "Qc__State.state" [ "Qc__State.MkState" ]. 
+Extract Inlined Constant State.maxSuccessTests => "Qc__State.maxSuccessTests".
+Extract Inlined Constant State.maxDiscardedTests => "Qc__State.maxDiscardedTests".
+Extract Inlined Constant State.maxShrinkNo => "Qc__State.maxShrinkNo".
+Extract Inlined Constant State.computeSize => "Qc__State.computeSize".
+Extract Inlined Constant State.numSuccessTests => "Qc__State.numSuccessTests".
+Extract Inlined Constant State.numDiscardedTests => "Qc__State.numDiscardedTests".
+Extract Inlined Constant State.labels => "Qc__State.labels".
+Extract Inlined Constant State.expectedFailure => "Qc__State.expectedFailure".
+Extract Inlined Constant State.randomSeed => "Qc__State.randomSeed0".
+Extract Inlined Constant State.numSuccessShrinks => "Qc__State.numSuccessShrinks".
+Extract Inlined Constant State.numTryShrinks => "Qc__State.numTryShrinks".
+Extract Inlined Constant State.stDoAnalysis => "Qc__State.stDoAnalysis".
+Extract Inlined Constant State.updTryShrinks => "Qc__State.updTryShrinks".
+Extract Inlined Constant State.updSuccessShrinks => "Qc__State.updSuccessShrinks".
+
+Extract Inductive Checker.CallbackKind => "Qc__Checker.callbackKind" [ "Qc__Checker.Counterexample" "Qc__Checker.NotCounterexample" ].
+Extract Inductive Checker.SmallResult => "Qc__Checker.smallResult" [ "Qc__Checker.MkSmallResult" ].
+Extract Inductive Checker.Callback => "Qc__Checker.callback" [ "Qc__Checker.PostTest" "Qc__Checker.PostFinalFailure" ].
+Extract Inductive Checker.Result => "Qc__Checker.result" [ "Qc__Checker.MkResult" ].
+Extract Inlined Constant Checker.ok => "Qc__Checker.ok".
+Extract Inlined Constant Checker.expect => "Qc__Checker.expect".
+Extract Inlined Constant Checker.reason => "Qc__Checker.reason".
+Extract Inlined Constant Checker.interrupted => "Qc__Checker.interrupted".
+Extract Inlined Constant Checker.stamp => "Qc__Checker.stamp".
+Extract Inlined Constant Checker.callbacks => "Qc__Checker.callbacks".
+Extract Inlined Constant Checker.result_tag => "Qc__Checker.result_tag".
+(*Extract Constant Checker.succeeded => "Qc__Checker.succeeded".
+Extract Constant Checker.failed => "Qc__Checker.failed".
+Extract Constant Checker.updReason => "Qc__Checker.updReason".
+Extract Constant Checker.addCallback => "Qc__Checker.addCallback".*)
+Extract Inductive Checker.QProp => "Qc__Checker.qProp" [ "(fun x -> x)" ] "(fun cns x -> cns x)". 
+Extract Constant Checker.Checker => "Qc__Checker.checker". 
+Extract Inductive Checker.Checkable => "Qc__Checker.checkable" [ "(fun x -> x)" ] "(fun cns x -> cns x)". 
+Extract Inlined Constant Checker.liftBool => "Qc__Checker.liftBool".
+Extract Inlined Constant Checker.mapProp => "Qc__Checker.mapProp".
+Extract Inlined Constant Checker.mapRoseResult => "Qc__Checker.mapRoseResult".
+Extract Inlined Constant Checker.testResult => "Qc__Checker.testResult".
+Extract Inlined Constant Checker.testBool => "Qc__Checker.testBool".
+Extract Inlined Constant Checker.testChecker => "Qc__Checker.testChecker".
+Extract Inlined Constant Checker.props' => "Qc__Checker.props'".
+Extract Inlined Constant Checker.props => "Qc__Checker.props".
+Extract Inlined Constant Checker.shrinking => "Qc__Checker.shrinking".
+Extract Inlined Constant Checker.callback => "Qc__Checker.callback".
+Extract Inlined Constant Checker.printTestCase => "Qc__Checker.printTestCase".
+Extract Inlined Constant Checker.forAllShrink => "Qc__Checker.forAllShrink".
+Extract Inlined Constant Checker.testProd => "Qc__Checker.testProd".
+
+Extract Inductive Test.Args => "Qc__Test.args" [ "Qc__Test.MkArgs" ]. 
+Extract Inlined Constant Test.replay => "Qc__Test.replay".
+Extract Inlined Constant Test.maxSuccess => "Qc__Test.maxSuccess".
+Extract Inlined Constant Test.maxDiscard => "Qc__Test.maxDiscard".
+Extract Inlined Constant Test.maxShrinks => "Qc__Test.maxShrinks".
+Extract Inlined Constant Test.maxSize => "Qc__Test.maxSize".
+Extract Inlined Constant Test.chatty => "Qc__Test.chatty".
+Extract Inlined Constant Test.analysis => "Qc__Test.analysis".
+Extract Inductive Test.Result => "Qc__Test.result" [ "Qc__Test.Success" "Qc__Test.GaveUp" "Qc__Test.Failure" "Qc__Test.NoExpectedFailure" ].
+Extract Inlined Constant Test.roundTo => "Qc__Test.roundTo".
+Extract Inlined Constant Test.computeSize'' => "Qc__Test.computeSize''".
+Extract Inlined Constant Test.computeSize' => "Qc__Test.computeSize'".
+Extract Inlined Constant Test.at0 => "Qc__Test.at0".
+Extract Inlined Constant Test.insertBy => "Qc__Test.insertBy".
+Extract Inlined Constant Test.insSortBy => "Qc__Test.insSortBy".
+Extract Inlined Constant Test.summary => "Qc__Test.summary".
+Extract Inlined Constant Test.doneTesting => "Qc__Test.doneTesting".
+Extract Inlined Constant Test.giveUp => "Qc__Test.giveUp".
+Extract Inlined Constant Test.callbackPostTest => "Qc__Test.callbackPostTest".
+Extract Inlined Constant Test.callbackPostFinalFailure => "Qc__Test.callbackPostFinalFailure".
+Extract Inlined Constant Test.localMin => "Qc__Test.localMin".
+Extract Inlined Constant Test.runATest => "Qc__Test.runATest".
+Extract Inlined Constant Test.test => "Qc__Test.test".
+Extract Inlined Constant Test.quickCheckWith => "Qc__Test.quickCheckWith".
+Extract Inlined Constant Test.showCollectStatistics => "Qc__Test.showCollectStatistics".
+Extract Inlined Constant Test.showResult => "Qc__Test.showResult".

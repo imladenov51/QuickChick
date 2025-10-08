@@ -1,0 +1,3 @@
+version = 0.27.0
+margin = 90
+break-collection-expressions = wrap 

@@ -81,7 +81,7 @@ Definition insert_bst :=
   forAll (choose (1, 9)) (fun x => 
   is_bst 0 10 (insert x t))).
 
-(*! QuickChick insert_bst. *)
+QuickChick insert_bst.
 
 (*! Section derived-dec *)
 
@@ -90,7 +90,7 @@ Definition insert_bst_derived_checker :=
   forAll (choose (1, 9)) (fun x => 
   bst 0 10 (insert x t) ?? 10)).
 
-(*! QuickChick insert_bst_derived_checker. *)
+QuickChick insert_bst_derived_checker. 
 
 (*! Section derived-gen *)
 
@@ -99,7 +99,7 @@ Definition insert_bst_derived_gen :=
   forAll (choose (1, 9)) (fun x => 
   is_bst 0 10 (insert x t))).
 
-(*! QuickChick insert_bst_derived_gen. *)
+QuickChick insert_bst_derived_gen. 
 
 
 

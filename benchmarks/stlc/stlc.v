@@ -231,7 +231,7 @@ Definition prop_preservation :=
   forAll (gen_typed 5 nil t) (fun e =>
   preservation e t)).
 
-(*! QuickChick prop_preservation. *)
+QuickChick prop_preservation.
 
 (*! Section derived-dec *)
 
@@ -240,7 +240,7 @@ Definition prop_preservation_derived_checker :=
   forAll (gen_typed 5 nil t) (fun e =>
   preservation_derived e t)).
 
-(*! QuickChick prop_preservation_derived_checker. *)
+QuickChick prop_preservation_derived_checker.
 
 (*! Section derived-gen *)
 
@@ -249,7 +249,7 @@ Definition prop_preservation_derived_gen :=
   forAllMaybe (@arbitrarySizeST _ (fun e => typing nil e t) _ 5) (fun e =>
   preservation e t)).
 
-(*! QuickChick prop_preservation_derived_gen. *)
+QuickChick prop_preservation_derived_gen.
 
 (*! Section naive-gen *)
 
@@ -257,7 +257,7 @@ Definition prop_preservation_naive_gen :=
   forAll (@arbitrary term _) (fun e =>
   preservation_check e).
 
-(*! QuickChick prop_preservation_naive_gen. *)
+QuickChick prop_preservation_naive_gen.
 
 
 

@@ -1,6 +1,8 @@
 Require Import Extraction.
 Require Import Ltac.
 
+(* Global Set Extraction KeepSingleton. *)
+
 #if COQ_VERSION >= (8, 16, 0)
 Declare ML Module "coq-quickchick.plugin".
 #else
